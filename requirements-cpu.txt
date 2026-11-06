@@ -17,6 +17,7 @@ tqdm>=4.41.0
 gdown
 flask
 Werkzeug
+datasets
 
 # Logging -------------------------------------
 tensorboard>=2.4.1

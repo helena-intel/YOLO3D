@@ -110,16 +110,13 @@ def detect3d(
                 continue
 
             theta_ray = detectedObject.theta_ray
-            input_img = detectedObject.img
+            input_img = detectedObject.img_uint8
             proj_matrix = detectedObject.proj_matrix
             box_2d = det.box_2d
             detected_class = det.detected_class
 
-            input_tensor = torch.zeros([1,3,224,224]).to('cpu')
-            input_tensor[0,:,:,:] = input_img
-
             # predict orient, conf, and dim
-            results = compiled_regressor(input_tensor.numpy())
+            results = compiled_regressor(input_img[None])
             orient = results[compiled_regressor.output(0)]
             conf = results[compiled_regressor.output(1)]
             dim = results[compiled_regressor.output(2)]
@@ -177,7 +174,7 @@ def detect2d(
     # Load model
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=False, data=data)
-    stride, names, pt, jit, onnx, engine = model.stride, model.names, model.pt, model.jit, model.onnx, model.engine
+    stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
     # Dataloader
@@ -186,8 +183,8 @@ def detect2d(
     # Run inference
     model.warmup(imgsz=(1, 3, *imgsz), half=False)  # warmup
 
-    model_new = core.read_model(weights)  # Assuming weights is the path to the ONNX model
-    print("ONNX model read successfully by OpenVINO")
+    model_new = core.read_model(weights)
+    print("OpenVINO IR model read successfully")
 
     # # # Compile the model
     compiled_model = core.compile_model(model_new, "CPU")

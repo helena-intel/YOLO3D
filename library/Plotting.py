@@ -78,7 +78,7 @@ def plot_3d_pts(img, pts, center, calib_file=None, cam_to_img=None, relative=Fal
 
 
 
-def plot_3d_box(img, cam_to_img, ry, dimension, center):
+def plot_3d_box(img, cam_to_img, ry, dimension, center, fill_front=True):
 
     # plot_3d_pts(img, [center], center, calib_file=calib_file, cam_to_img=cam_to_img)
 
@@ -108,15 +108,14 @@ def plot_3d_box(img, cam_to_img, ry, dimension, center):
     for i in range(0,7,2):
         cv2.line(img, (box_3d[i][0], box_3d[i][1]), (box_3d[i+1][0],box_3d[i+1][1]), cv_colors.GREEN.value, 2)
 
-    # frame to drawing polygon
-    frame = np.zeros_like(img, np.uint8)
+    if fill_front:
+        # Add a translucent face to help distinguish the front of the 3D box.
+        frame = np.zeros_like(img, np.uint8)
+        cv2.fillPoly(frame, np.array([[[box_3d[0]], [box_3d[1]], [box_3d[3]], [box_3d[2]]]], dtype=np.int32), cv_colors.BLUE.value)
 
-    # front side
-    cv2.fillPoly(frame, np.array([[[box_3d[0]], [box_3d[1]], [box_3d[3]], [box_3d[2]]]], dtype=np.int32), cv_colors.BLUE.value)
-
-    alpha = 0.5
-    mask = frame.astype(bool)
-    img[mask] = cv2.addWeighted(img, alpha, frame, 1 - alpha, 0)[mask]
+        alpha = 0.5
+        mask = frame.astype(bool)
+        img[mask] = cv2.addWeighted(img, alpha, frame, 1 - alpha, 0)[mask]
 
 def plot_2d_box(img, box_2d):
     # create a square from the corners

@@ -1,6 +1,13 @@
 # Copyright (C) 2018-2024 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+"""Shared inference steps for the full-pipeline benchmark.
+
+Generate models for onnx_openvino with `python weights/convert_models.py --onnx`
+from the repository root. ONNX ResNet expects normalized float32 BGR crops;
+the directly converted IR includes preprocessing and expects uint8 BGR crops.
+"""
+
 import time
 import torch
 import numpy as np
@@ -236,13 +243,18 @@ def load_regressor_model(weights_path, model_name_str, device_str, model_type='p
         print(f"Error loading/compiling Regressor model ({model_type}): {e}", file=sys.stderr)
         return None
 
-# COCO to KITTI class name mapping (for OpenVINO models that can't extract names)
+# COCO to KITTI class name mapping
 COCO_TO_KITTI_MAPPING = {
     0: 'pedestrian',     # person
     2: 'car',
-    3: 'cyclist',        # bicycle
+    3: 'cyclist',        # motorcycle
     5: 'truck',          # bus -> truck (approximate)
     7: 'truck',
+}
+COCO_TO_KITTI_ALIASES = {
+    'person': 'pedestrian',
+    'motorcycle': 'cyclist',
+    'bus': 'truck',
 }
 
 def benchmarkable_detect3d(
@@ -332,16 +344,15 @@ def benchmarkable_detect3d(
             _t_start = time.perf_counter()
             cls_idx = det_info["cls_idx"]
             
-            # Get class name: try direct names lookup, fallback to COCO-to-KITTI mapping for OpenVINO
             if names and 0 <= cls_idx < len(names):
                 detected_class_name = names[cls_idx]
             else:
                 detected_class_name = f'class_{cls_idx}'
             
-            # For OpenVINO models using generic class names, try COCO-to-KITTI mapping
-            if detected_class_name.startswith('class_') and yolo_model_type in ['onnx_openvino', 'ir_openvino']:
-                if cls_idx in COCO_TO_KITTI_MAPPING:
-                    detected_class_name = COCO_TO_KITTI_MAPPING[cls_idx]
+            if detected_class_name.startswith('class_'):
+                detected_class_name = COCO_TO_KITTI_MAPPING.get(cls_idx, detected_class_name)
+            else:
+                detected_class_name = COCO_TO_KITTI_ALIASES.get(detected_class_name.lower(), detected_class_name)
             
             if class_averages and not class_averages.recognized_class(detected_class_name):
                 timings['regressor_crop_preprocess_total'] += time.perf_counter() - _t_start
@@ -355,8 +366,10 @@ def benchmarkable_detect3d(
                 regressor_patch_tensor = detected_obj.img
                 if regressor_model_type in ['pytorch_native', 'pytorch_compile_openvino']: 
                     regressor_input_batch_constructor.append(regressor_patch_tensor)
-                elif regressor_model_type in ['onnx_openvino', 'ir_openvino']: 
+                elif regressor_model_type == 'onnx_openvino':
                     regressor_input_batch_constructor.append(regressor_patch_tensor.cpu().numpy())
+                elif regressor_model_type == 'ir_openvino':
+                    regressor_input_batch_constructor.append(detected_obj.img_uint8)
                 timings['regressor_crop_preprocess_total'] += time.perf_counter() - _t_start
             except Exception as e:
                 print(f"Warning: Failed to create DetectedObject for class '{detected_class_name}' with box {box_2d}: {e}", file=sys.stderr)
@@ -381,7 +394,8 @@ def benchmarkable_detect3d(
                 elif regressor_model_type in ['onnx_openvino', 'ir_openvino']: 
                     reg_batch_feed = np.stack(current_batch_list)  # Shape: (actual_batch_size, 3, 224, 224)
                     
-                    # Pad incomplete batches to match model's expected batch size
+                    # TODO: Align partial-batch handling across backends for fair timings.
+                    # OpenVINO pads to the fixed model batch; PyTorch runs only actual crops.
                     if actual_batch_size < regressor_batch_size:
                         padding_needed = regressor_batch_size - actual_batch_size
                         padding = np.zeros((padding_needed, *reg_batch_feed.shape[1:]), dtype=reg_batch_feed.dtype)

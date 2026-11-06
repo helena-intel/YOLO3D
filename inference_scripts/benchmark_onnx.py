@@ -1,6 +1,16 @@
 # Copyright (C) 2018-2024 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+"""Benchmark an ONNX model using OpenVINO.
+
+Export the models first, running from the repository root:
+    python weights/convert_models.py --onnx
+
+The ONNX files are saved under weights/onnx/ by default. For example:
+    python inference_scripts/benchmark_onnx.py --model_path weights/onnx/yolov5s.onnx
+For ResNet, pass --model_path weights/onnx/resnet18.onnx --img_size 224.
+"""
+
 import openvino as ov
 import numpy
 import time
@@ -29,7 +39,10 @@ except ImportError as e:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ONNX Model + OpenVINO Runtime Benchmark Script with Real Dataset")
+    parser = argparse.ArgumentParser(
+        description="ONNX Model + OpenVINO Runtime Benchmark Script with Real Dataset",
+        epilog="Create ONNX models first with: python weights/convert_models.py --onnx (from the repository root).",
+    )
     parser.add_argument('--model_path', type=str, required=True, help='Path to ONNX model file')
     parser.add_argument('--dataset_path', type=str, default=None, help='Path to dataset directory or image file. If None, uses dummy data.')
     parser.add_argument('--img_size', type=int, default=640, help='Image size (square) for preprocessing and model input. Must match ONNX model expected input size.')

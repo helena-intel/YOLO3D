@@ -11,14 +11,24 @@ Usage example:
 
 This script reads an OpenVINO IR, builds a simple calibration dataset
 from images in a folder, runs NNCF quantization, and writes the quantized IR.
+The input IR expects letterboxed RGB float32 NCHW images scaled to [0, 1].
 """
 import argparse
 import os
 import glob
+import sys
+from pathlib import Path
+
 import cv2
 import numpy as np
 import openvino as ov
 import nncf
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from utils.augmentations import letterbox
 
 
 def parse_args():
@@ -36,12 +46,9 @@ def preprocess_image(path, input_size):
     img = cv2.imread(path)
     if img is None:
         raise RuntimeError(f"Failed to read image: {path}")
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    img = cv2.resize(img, (input_size[1], input_size[0]))
-    img = img.astype(np.float32) / 255.0
-    # transpose HWC -> NCHW
-    img = np.transpose(img, (2, 0, 1))
-    return img
+    img = letterbox(img, new_shape=input_size, stride=32, auto=False)[0]
+    rgb = img[:, :, ::-1].transpose(2, 0, 1)
+    return np.ascontiguousarray(rgb, dtype=np.float32) / 255.0
 
 
 def make_calibration_generator(image_paths, input_size, batch, max_samples):
@@ -76,16 +83,13 @@ def main():
 
     calib_gen = make_calibration_generator(imgs, args.input_size, args.batch, args.max_samples)
 
-    try:
-        quantized_model = nncf.quantize(
-            model,
-            calibration_dataset=nncf.Dataset(calib_gen())
-        )
-    except Exception as e:
-        print(f"NNCF quantization failed: {e}")
-        print("Falling back to saving original IR (no quantization)")
-        quantized_model = model
+    quantized_model = nncf.quantize(
+        model,
+        calibration_dataset=nncf.Dataset(calib_gen()),
+        subset_size=args.max_samples,
+    )
 
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     ov.serialize(quantized_model, args.output)
     print(f"Quantized model saved to {args.output}")
 

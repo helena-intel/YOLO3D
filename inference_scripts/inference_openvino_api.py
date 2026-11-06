@@ -64,7 +64,7 @@ def detect3d(
     show_result,
     save_result,
     output_path,
-    yolo_weights='../weights/onnx/yolov5s.onnx',
+    yolo_weights='../weights/openvino/yolov5s.xml',
     yolo_data='../data/coco128.yaml'
     ):
 
@@ -117,17 +117,14 @@ def detect3d(
                 continue
 
             theta_ray = detectedObject.theta_ray
-            input_img = detectedObject.img
+            input_img = detectedObject.img_uint8
             proj_matrix = detectedObject.proj_matrix
             box_2d = det.box_2d
             detected_class = det.detected_class
 
-            input_tensor = torch.zeros([1,3,224,224]).to('cpu')
-            input_tensor[0,:,:,:] = input_img
-
             # predict orient, conf, and dim with timing
             t_reg_start = time_sync()
-            results = compiled_regressor(input_tensor.numpy())
+            results = compiled_regressor(input_img[None])
             t_reg_end = time_sync()
             image_regressor_times.append((t_reg_end - t_reg_start) * 1000)  # convert to ms
             
@@ -200,7 +197,7 @@ def detect2d(
     # Load model
     device = select_device(device)
     model = DetectMultiBackend(weights, device=device, dnn=False, data=data)
-    stride, names, pt, jit, onnx, engine = model.stride, model.names, model.pt, model.jit, model.onnx, model.engine
+    stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
     # Dataloader
@@ -209,8 +206,8 @@ def detect2d(
     # Run inference
     model.warmup(imgsz=(1, 3, *imgsz), half=False)  # warmup
 
-    model_new = core.read_model(weights)  # Assuming weights is the path to the ONNX model
-    print("ONNX model read successfully by OpenVINO")
+    model_new = core.read_model(weights)
+    print("OpenVINO IR model read successfully")
 
     # # # Compile the model
     compiled_model = core.compile_model(model_new, "CPU")
@@ -305,13 +302,13 @@ def plot3d(
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='../weights/onnx/yolov5s.onnx', help='model path(s)')
+    parser.add_argument('--weights', nargs='+', type=str, default='../weights/openvino/yolov5s.xml', help='OpenVINO IR XML model path(s)')
     parser.add_argument('--source', type=str, default='../eval/image_2', help='file/dir/URL/glob, 0 for webcam')
     parser.add_argument('--data', type=str, default='../data/coco128.yaml', help='(optional) dataset.yaml path')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
     parser.add_argument('--device', default='cpu', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--classes', default=[0, 2, 3, 5], nargs='+', type=int, help='filter by class: --classes 0, or --classes 0 2 3')
-    parser.add_argument('--reg_weights', type=str, default='../weights/onnx/resnet18.onnx', help='Regressor model weights')
+    parser.add_argument('--reg_weights', type=str, default='../weights/openvino/resnet18.xml', help='Regressor OpenVINO IR XML model')
     parser.add_argument('--model_select', type=str, default='resnet18', help='Regressor model list: resnet, vgg, eff')
     parser.add_argument('--calib_file', type=str, default='../eval/camera_cal/calib_cam_to_cam.txt', help='Calibration file or path')
     parser.add_argument('--show_result', action='store_true', help='Show Results with imshow')

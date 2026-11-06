@@ -9,10 +9,7 @@ import sys
 import cv2 # Explicitly import cv2
 import random # For selecting images
 
-# Works around a torch._dynamo guard-building crash (AssertionError: sources
-# must not be empty) seen on this YOLOv5 model with the installed torch build;
-# falls back to eager execution instead of hard-crashing.
-torch._dynamo.config.suppress_errors = True
+torch._dynamo.config.suppress_errors = False
 
 # Add project root to sys.path to allow imports
 FILE = Path(__file__).resolve()
@@ -129,14 +126,27 @@ def main():
         return
 
     # Model Compilation
+    fallback_reason = None
     try:
         print(f"Compiling model with torch.compile for OpenVINO backend, device: {args.device.upper()}...")
         compiled_model = torch.compile(model, backend="openvino", options={"device": args.device.upper()})
-        print("Model compiled successfully.")
+        print("Compilation wrapper created; compilation is deferred until inference.")
     except Exception as e:
-        print(f"Error during torch.compile with OpenVINO backend: {e}", file=sys.stderr)
-        print("Please ensure 'openvino-pytorch' is installed.", file=sys.stderr)
-        return
+        fallback_reason = f"{type(e).__name__}: {e}"
+        print(f"Warning: torch.compile setup failed; falling back to eager PyTorch on CPU: {fallback_reason}", file=sys.stderr)
+        compiled_model = model
+
+    def run_inference(batch_data):
+        nonlocal compiled_model, fallback_reason
+        try:
+            return compiled_model(batch_data)
+        except Exception as error:
+            if compiled_model is model:
+                raise
+            fallback_reason = f"{type(error).__name__}: {error}"
+            print(f"Warning: compiled execution failed; falling back to eager PyTorch on CPU: {fallback_reason}", file=sys.stderr)
+            compiled_model = model
+            return compiled_model(batch_data)
 
     # Data Loading
     all_processed_images_cpu = []
@@ -179,9 +189,9 @@ def main():
             with torch.no_grad():
                 if args.dataset_path:
                     batch_data = get_real_batch_from_preloaded_cpu()
-                    _ = compiled_model(batch_data)
+                    _ = run_inference(batch_data)
                 else:
-                    _ = compiled_model(dummy_input_batch_cpu)
+                    _ = run_inference(dummy_input_batch_cpu)
         print("Warm-up runs completed.")
     except Exception as e:
         print(f"Error during warm-up runs: {e}", file=sys.stderr)
@@ -196,9 +206,9 @@ def main():
             with torch.no_grad():
                 if args.dataset_path:
                     batch_data = get_real_batch_from_preloaded_cpu()
-                    _ = compiled_model(batch_data)
+                    _ = run_inference(batch_data)
                 else:
-                    _ = compiled_model(dummy_input_batch_cpu)
+                    _ = run_inference(dummy_input_batch_cpu)
             end_time = time.perf_counter()
             timings.append(end_time - start_time)
             if (i + 1) % 10 == 0:
@@ -217,13 +227,20 @@ def main():
     avg_time_ms = avg_time_s * 1000
     fps = 1 / avg_time_s if avg_time_s > 0 else 0
 
-    print("\n--- PyTorch + torch.compile OpenVINO Benchmark Results ---")
+    if fallback_reason is not None:
+        print("\n--- PyTorch Eager Fallback Benchmark Results ---")
+        print("Execution mode: FALLBACK to eager PyTorch on CPU")
+        print(f"Fallback reason: {fallback_reason}")
+        print("WARNING: Timings may include mixed execution and are not OpenVINO measurements.")
+    else:
+        print("\n--- PyTorch + torch.compile OpenVINO Benchmark Results ---")
+        print("Execution mode: torch.compile with OpenVINO backend (no compiler failure observed)")
     print(f"Model: {args.weights}")
     print(f"Config: {args.cfg}")
     print(f"Dataset: {args.dataset_path if args.dataset_path else 'Dummy Data'}")
     print(f"Image Size (model input): {args.img_size}x{args.img_size}")
     print(f"Batch Size: {args.batch_size}")
-    print(f"OpenVINO Device: {args.device.upper()}") # This is the OpenVINO backend device
+    print(f"Requested OpenVINO Device: {args.device.upper()}")
     print(f"Number of warm-up runs: {args.warmup_runs}")
     print(f"Number of benchmark runs: {args.benchmark_runs}")
     print("----------------------------------------------------------")

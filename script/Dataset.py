@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import cv2
+import torch
 
 from torchvision import transforms
 
@@ -214,7 +215,8 @@ class DetectedObject:
 
         self.proj_matrix = proj_matrix
         self.theta_ray = self.calc_theta_ray(img, box_2d, proj_matrix)
-        self.img = self.format_img(img, box_2d)
+        self.img_uint8 = self.format_img_uint8(img, box_2d)
+        self.img = self.normalize_img(self.img_uint8)
         self.label = label
         self.detection_class = detection_class
 
@@ -237,26 +239,18 @@ class DetectedObject:
 
         return angle
 
-    def format_img(self, img, box_2d):
-        # transforms
-        normalize = transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225])
-
-        process = transforms.Compose([
-            transforms.ToTensor(),
-            normalize
-        ])
-
-        # crop image
+    def format_img_uint8(self, img, box_2d):
         pt1, pt2 = box_2d[0], box_2d[1]
         crop = img[pt1[1]:pt2[1]+1, pt1[0]:pt2[0]+1]
         crop = cv2.resize(crop, (224, 224), interpolation=cv2.INTER_CUBIC)
+        return np.ascontiguousarray(crop.transpose(2, 0, 1), dtype=np.uint8)
 
-        # apply transform for batch
-        batch = process(crop)
-
-        return batch
+    def normalize_img(self, image_uint8):
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225])
+        image = torch.from_numpy(image_uint8).float().div(255.0)
+        return normalize(image)
 
 
 

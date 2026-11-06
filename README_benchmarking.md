@@ -6,7 +6,7 @@ All benchmark scripts are located in the `inference_scripts/` directory. They re
 
 **Prerequisites:**
 - Ensure you have followed the setup steps in `README_openvino.md`, including environment setup, dependency installation, and model downloading/conversion.
-- For benchmarks requiring specific model formats (e.g., ONNX, OpenVINO IR), make sure you have converted the models accordingly using the scripts in `weights/model_conversion/`, which save ONNX models to `weights/onnx/` and OpenVINO IR models to `weights/openvino/`.
+- Use `weights/convert_models.py` to convert the source checkpoints directly to OpenVINO IR in `weights/openvino/`. It does not produce ONNX files. The optional ONNX benchmarks require separately exported ONNX models. (Use convert_models.py with `--onnx` to produce them).
 
 ## Full 3D Detection Pipeline Benchmark (`benchmark_full_pipeline.py`)
 
@@ -57,6 +57,8 @@ python inference_scripts/benchmark_full_pipeline.py \
 ```
 
 **Example Command (OpenVINO ONNX Pipeline):**
+This optional path requires separately exported YOLO and ResNet ONNX models; the default conversion step does not create them. Use convert_models.py with `--onnx` to create them.
+
 ```bash
 python inference_scripts/benchmark_full_pipeline.py \
   --pipeline_type onnx_openvino \
@@ -74,14 +76,14 @@ python inference_scripts/benchmark_full_pipeline.py \
 
 ### Benchmarking INT8 Quantized Models
 
-Once the OpenVINO IR models have been quantized to INT8 (see [Quantize models to INT8](README_openvino.md#5-quantize-models-to-int8-optional) in `README_openvino.md`, producing `weights/openvino/yolov5s_int8.xml` and `weights/openvino/resnet18_quantized.xml`), benchmark them the same way as the regular OpenVINO IR pipeline above, just pointing `--yolo_weights`/`--regressor_weights` at the quantized files. The `--pipeline_type` stays `ir_openvino`.
+Once the OpenVINO IR models have been quantized to INT8 with `weights/quantize_yolo.py` and `weights/quantize_resnet.py` (see [Quantize models to INT8](README_openvino.md#5-quantize-models-to-int8-optional) in `README_openvino.md`, producing `weights/openvino/yolov5s_int8.xml` and `weights/openvino/resnet18_int8.xml`), benchmark them the same way as the regular OpenVINO IR pipeline above, just pointing `--yolo_weights`/`--regressor_weights` at the quantized files. The `--pipeline_type` stays `ir_openvino`.
 
 **Example Command (INT8 OpenVINO IR Pipeline, CPU):**
 ```bash
 python inference_scripts/benchmark_full_pipeline.py \
   --pipeline_type ir_openvino \
   --yolo_weights weights/openvino/yolov5s_int8.xml \
-  --regressor_weights weights/openvino/resnet18_quantized.xml \
+  --regressor_weights weights/openvino/resnet18_int8.xml \
   --regressor_name resnet18 \
   --dataset_path eval/image_2/ \
   --calib_file eval/camera_cal/calib_cam_to_cam.txt \
@@ -130,7 +132,7 @@ Swap `--device CPU` for `GPU` or `NPU` to benchmark on other targets, exactly li
 
 ### 3. ONNX with OpenVINO Runtime (`benchmark_onnx.py`)
    - **Purpose:** Measures inference speed of an ONNX model using the OpenVINO Runtime.
-   - **Model Expected:** ONNX model (`.onnx` file). Ensure this model is converted from PyTorch or other formats first (e.g., using `pytorch_to_openvino_ir.py` which saves the intermediate ONNX to `weights/onnx/`).
+  - **Model Expected:** A separately exported ONNX model (`.onnx` file). The default `weights/convert_models.py` workflow produces IR only, so provide an existing ONNX model for this optional benchmark.
    - The optional `--dataset_path` argument can be used to specify a directory of images (e.g., `eval/image_2/`) or a single image file for benchmarking on real data. If not provided, the script uses randomly generated dummy data.
    - **Example Command:**
      ```bash
@@ -146,7 +148,7 @@ Swap `--device CPU` for `GPU` or `NPU` to benchmark on other targets, exactly li
 
 ### 4. OpenVINO IR with OpenVINO Runtime (`benchmark_openvino_ir.py`)
    - **Purpose:** Measures inference speed of an OpenVINO Intermediate Representation (IR) model (`.xml` and `.bin` files) using the OpenVINO Runtime. This is often the most optimized path for OpenVINO.
-   - **Model Expected:** OpenVINO IR model (`.xml` file). Ensure this model is converted first (e.g., using `pytorch_to_openvino_ir.py` which saves IR models to `weights/openvino/`).
+  - **Model Expected:** OpenVINO IR model (`.xml` file with its matching `.bin` file). Convert the source checkpoint first using `weights/convert_models.py`, which saves IR models to `weights/openvino/`.
    - The optional `--dataset_path` argument can be used to specify a directory of images (e.g., `eval/image_2/`) or a single image file for benchmarking on real data. If not provided, the script uses randomly generated dummy data.
    - **Example Command:**
      ```bash

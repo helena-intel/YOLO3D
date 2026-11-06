@@ -1,6 +1,16 @@
 # Copyright (C) 2018-2024 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+"""Benchmark the YOLO3D pipeline across PyTorch and OpenVINO backends.
+
+Before using --pipeline_type onnx_openvino, run from the repository root:
+    python weights/convert_models.py --onnx
+
+Use weights/onnx/yolov5s.onnx for --yolo_weights and weights/onnx/resnet18.onnx
+for --regressor_weights. ONNX ResNet receives normalized float32 crops;
+the exported OpenVINO ResNet IR receives raw uint8 crops instead.
+"""
+
 import argparse
 import time
 import numpy as np
@@ -25,7 +35,10 @@ except ImportError as e:
     sys.exit(1)
 
 def main():
-    parser = argparse.ArgumentParser(description="Full 3D Detection Pipeline Benchmark Script")
+    parser = argparse.ArgumentParser(
+        description="Full 3D Detection Pipeline Benchmark Script",
+        epilog="For onnx_openvino, first run: python weights/convert_models.py --onnx (from the repository root).",
+    )
     parser.add_argument('--pipeline_type', type=str, required=True,
                         choices=['pytorch_native', 'pytorch_compile_openvino', 'onnx_openvino', 'ir_openvino'],
                         help="Type of pipeline to benchmark.")
