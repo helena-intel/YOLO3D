@@ -18,11 +18,11 @@ Despite its name, YOLO3D is not a single neural network. It combines two network
 
 For example, YOLO finds a car in a street scene. The regressor estimates its size and heading. The geometric code uses those estimates and the camera calibration to draw a box around it in perspective.
 
-Here is an existing OpenVINO example output:
+Here is an OpenVINO example output:
 
 ![Projected YOLO3D bounding boxes in a KITTI driving scene](https://raw.githubusercontent.com/avidiyal/YOLO3D/main/runs_xml/000.png)
 
-These are estimates from a single image, not direct depth measurements. The camera calibration is part of the pipeline, not an optional finishing touch.
+These are estimates from a single image, not direct depth measurements. The camera calibration is part of the pipeline.
 
 ## Meet the Three Execution Targets
 
@@ -31,16 +31,16 @@ The devices for OpenVINO inference:
 | Device | What it is | Its place in this project |
 |---|---|---|
 | CPU | The computer's general-purpose processor. | A starting point for running and validating the OpenVINO models. |
-| GPU | A processor commonly associated with graphics that can also execute neural networks. | Another target for the detector and regressor through OpenVINO's GPU plugin. |
+| GPU | A graphics processor that can also execute neural networks. | Another target for the detector and regressor. |
 | NPU | A neural processing unit designed for AI workloads. | A dedicated AI target for supported model and input configurations. |
 
-Using a different device is as simple as setting a device parameter. No need to change anything else in the code.
+Using a different device is as simple as setting a device parameter. No need to change anything else in the code. The NPU device does have some limitations that are good to be aware of. See the [NPU documentation]((https://docs.openvino.ai/2026/openvino-workflow/running-inference/inference-devices-and-modes/npu-device.html)).
 
 ## Prepare the Models Once
 
 We start with PyTorch checkpoints for YOLOv5s and the ResNet18-based regressor. We use `ov.convert_model`, OpenVINO's Python conversion function, to turn each network into an OpenVINO model. It accepts a supported model object or model file; see the [ov.convert_model documentation](https://docs.openvino.ai/2026/api/ie_python_api/_autosummary/openvino.convert_model.html) for the available options. We then use `ov.save_model` to save the result in OpenVINO Intermediate Representation, usually called IR.
 
-The repo's [conversion script](https://github.com/avidiyal/YOLO3D/blob/main/weights/convert_models.py) contains the code to export both models to OpenVINO. It converts the loaded PyTorch models using `ov.convert_model`.
+The repo's [conversion script](https://github.com/avidiyal/YOLO3D/blob/main/weights/convert_models.py) contains the code to export both models to OpenVINO.
 
 After following the [OpenVINO setup guide](https://github.com/avidiyal/YOLO3D/blob/main/README_openvino.md) to install dependencies and download both source checkpoints, run this command from the repository root:
 
