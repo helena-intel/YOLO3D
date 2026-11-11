@@ -268,15 +268,21 @@ def main():
             args.img_size_pytorch, args.batch_size_pytorch, args.opset_version_pytorch,
             export_onnx=args.onnx,
         )
-    
+    else:
+        print(f"Skipping YOLO conversion: {args.pytorch_weights} or {args.pytorch_cfg} not found. "
+              "Run weights/get_weights.py first.", file=sys.stderr)
+
     if Path(args.pkl_path).exists():
         convert_pkl_to_ir(
             args.pkl_path,
-            args.onnx_dir, args.ir_dir, 
+            args.onnx_dir, args.ir_dir,
             args.img_size_pkl, args.batch_size_pkl, args.opset_version_pkl,
             export_onnx=args.onnx,
         )
-    
+    else:
+        print(f"Skipping regressor conversion: {args.pkl_path} not found. "
+              "Run weights/get_weights.py first.", file=sys.stderr)
+
     print("\nConversion complete!")
 
 if __name__ == '__main__':
