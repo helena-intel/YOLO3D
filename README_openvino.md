@@ -32,7 +32,7 @@
 
 ### 5. Quantize models to INT8 (optional)
 
-   This step uses NNCF (Neural Network Compression Framework) to post-training quantize the OpenVINO IR models produced in step 4 down to INT8, which can significantly speed up inference (especially on CPU/NPU) at a small accuracy cost. NNCF is installed with `requirements-cpu.txt`. Run the following commands from the repository root.
+   This step uses NNCF (Neural Network Compression Framework) to post-training quantize the OpenVINO IR models produced in step 4 down to INT8, which can speed up inference at a small accuracy cost. NNCF is installed with `requirements-cpu.txt`. Run the following commands from the repository root.
 
    - **Quantize YOLOv5s** (`weights/quantize_yolo.py`), using real calibration images from `eval/image_2/`:
      ```bash
