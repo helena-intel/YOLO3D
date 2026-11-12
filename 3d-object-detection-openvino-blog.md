@@ -63,7 +63,7 @@ python weights/quantize_yolo.py \
 python weights/quantize_resnet.py
 ```
 
-That's all quantization takes: two commands and about a minute, with no retraining. [NNCF](https://github.com/openvinotoolkit/nncf) does the work. INT8 models boost performance, especially on the CPU and the NPU, with minimal accuracy loss. You'll find them next to the originals as `yolov5s_int8.xml` and `resnet18_int8.xml`, and they run on every device. Steps 5 and 7 show how to use them.
+That's all quantization takes: two commands and about a minute, with no retraining. [NNCF](https://github.com/openvinotoolkit/nncf) does the work. INT8 models can boost performance, with minimal accuracy loss. You'll find them next to the originals as `yolov5s_int8.xml` and `resnet18_int8.xml`, and they run on every device. Steps 5 and 7 show how to use them.
 
 **4. Check which devices OpenVINO can see.**
 
@@ -74,6 +74,8 @@ python -c "import openvino as ov; print(ov.Core().available_devices)"
 Use the names exactly as they're printed. If the system has more than one GPU, they show up as `GPU.0`, `GPU.1`, and so on, and plain `GPU` means `GPU.0`.
 
 **5. Run the 3D pipeline on each device.**
+
+The `inference_openvino_xml.py` script is a quick demo of how to run inference with OpenVINO on the YOLO3D pipeline. By default it uses the images in `eval/image_2`. Run the script with `--help` to see all options.
 
 ```bash
 python inference_scripts/inference_openvino_xml.py --device CPU \
@@ -159,7 +161,7 @@ To move the regressor to the CPU, change `"NPU"` to `"CPU"`. Two more OpenVINO f
 
 ## Convert Once, Validate Everywhere
 
-The [conversion script](https://github.com/avidiyal/YOLO3D/blob/main/weights/convert_models.py) calls [`ov.convert_model`](https://docs.openvino.ai/2026/api/ie_python_api/_autosummary/openvino.convert_model.html) on each PyTorch model directly, so there's no ONNX export in the middle. The `.xml` and `.bin` files it writes are the only model files you need, whatever device you run on. For the regressor, the script also uses the OpenVINO [preprocessing API](https://docs.openvino.ai/2026/openvino-workflow/running-inference/optimize-inference/optimize-preprocessing.html) to move input conversion and normalization into the model, which means that work runs on your chosen device as well.
+The [conversion script](https://github.com/avidiyal/YOLO3D/blob/main/weights/convert_models.py) calls [`ov.convert_model`](https://docs.openvino.ai/2026/api/ie_python_api/_autosummary/openvino.convert_model.html) on each PyTorch model. The `.xml` and `.bin` files it writes are the only model files you need, whatever device you run on. For the regressor, the script also uses the OpenVINO [preprocessing API](https://docs.openvino.ai/2026/openvino-workflow/running-inference/optimize-inference/optimize-preprocessing.html) to move input conversion and normalization into the model, which means that the preprocessing runs on your chosen device as well.
 
 Don't expect bit-identical results across devices. By default, the GPU and NPU typically compute in 16-bit floating point, and the CPU typically uses 32-bit. In our runs, every device found the same objects, and the 3D boxes differed only slightly. To put numbers on it, the [accuracy evaluator](https://github.com/avidiyal/YOLO3D/blob/main/inference_scripts/accuracy.py) compares the original PyTorch model with the OpenVINO model on labeled KITTI images:
 
