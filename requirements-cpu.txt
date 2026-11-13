@@ -32,3 +32,4 @@ thop  # FLOPs computation
 onnx
 onnxruntime
 openvino
+nncf

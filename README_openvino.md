@@ -1,40 +1,38 @@
 ## Setup and Inference Steps
 
-1. **Create a virtual environment**
+### 1. Create a virtual environment
    ```bash
    python -m venv ov-yolo3d-env
-   source ov-yolo3d-env/bin/activate
+   source ov-yolo3d-env/bin/activate   # Windows: ov-yolo3d-env\Scripts\activate
    ```
 
-2. **Install dependencies**
+### 2. Install dependencies
    ```bash
    pip install -r requirements-cpu.txt
    ```
-   - For Intel GPU and NPU devices, make sure to [install appropriate device drivers](https://docs.openvino.ai/2025/get-started/install-openvino/configurations.html)
+   - For Intel GPU and NPU devices, make sure to [install appropriate device drivers](https://docs.openvino.ai/2026/get-started/install-openvino/configurations.html)
 
-3. **Download model weights**
-   This step downloads pre-trained model weights using the `get_weights.py` script, which should be run from the `weights/` directory. This will download `resnet18.pkl` and `yolov5s.pt` into the `weights/` directory.
+### 3. Download model weights
+   This step downloads pre-trained model weights using the `get_weights.py` script. It saves `resnet18.pkl` and `yolov5s.pt` into the `weights/` directory, whichever directory you run it from.
 
    - **Default behavior (downloads ResNet18 PKL and YOLOv5s PT):**
      ```bash
-     cd weights
-     python get_weights.py
+     python weights/get_weights.py
      ```
 
-4. **Convert Source Models to OpenVINO IR**
+### 4. Convert Source Models to OpenVINO IR
 
   This step uses `weights/convert_models.py` to convert the PyTorch YOLO `.pt` and ResNet `.pkl` checkpoints directly into OpenVINO IR (`.xml` and `.bin` files). Converted models are saved to `weights/openvino/` by default.
 
    - **Default Conversion (YOLOv5s and ResNet18):**
      To convert the default `yolov5s.pt` (using `models/yolov5s.yaml`) and `resnet18.pkl` run:
      ```bash
-     python convert_models.py
-    cd ..
+     python weights/convert_models.py
      ```
 
-5. **Quantize models to INT8 (optional)**
+### 5. Quantize models to INT8 (optional)
 
-   This step uses NNCF (Neural Network Compression Framework) to post-training quantize the OpenVINO IR models produced in step 4 down to INT8, which can significantly speed up inference (especially on CPU/NPU) at a small accuracy cost. Install NNCF with `pip install nncf` if it is not already installed. Run the following commands from the repository root.
+   This step uses NNCF (Neural Network Compression Framework) to post-training quantize the OpenVINO IR models produced in step 4 down to INT8, which can speed up inference at a small accuracy cost. NNCF is installed with `requirements-cpu.txt`. Run the following commands from the repository root.
 
    - **Quantize YOLOv5s** (`weights/quantize_yolo.py`), using real calibration images from `eval/image_2/`:
      ```bash
@@ -49,11 +47,11 @@
      ```bash
      python weights/quantize_resnet.py --max-samples 300
      ```
-    The crop preprocessing matches ResNet evaluation. By default calibration uses the final contiguous shard of approximately 1,000 training images, while `accuracy.py` evaluates the first 1,000 streamed images, keeping the two samples separate. Use `--tail-images`, `--hf-dataset`, `--hf-split`, `--ir`, and `--output` to change the partition, data source, or model paths.
+     The crop preprocessing matches ResNet evaluation. By default calibration uses the final contiguous shard of approximately 1,000 training images, while `accuracy.py` evaluates the first 1,000 streamed images, keeping the two samples separate. Use `--tail-images`, `--hf-dataset`, `--hf-split`, `--ir`, and `--output` to change the partition, data source, or model paths.
 
    For details on benchmarking these quantized models, see the [Benchmarking Guide](README_benchmarking.md#benchmarking-int8-quantized-models).
 
-6. **Run inference scripts**
+### 6. Run inference scripts
 
    - **Original inference script**
      (This script might need updates if it doesn't use the new model paths, or it might be deprecated if focus is on OpenVINO scripts.)
@@ -76,6 +74,11 @@
        # Assumes yolov5s.xml and resnet18.xml were created in step 4.
        python inference_openvino_xml.py  --save_result
        ```
+       Choose the OpenVINO device with `--device` (`CPU`, `GPU`, or `NPU`; default `CPU`). To place the two models on different devices, use `--det_device` for YOLO and `--reg_device` for the regressor:
+       ```bash
+       python inference_openvino_xml.py --device NPU --save_result --output_path ../output_npu
+       python inference_openvino_xml.py --det_device GPU --reg_device NPU --save_result --output_path ../output_split
+       ```
        To verify the actual INT8 quantized models produce correct 3D detections (not just faster timings), point `--weights`/`--reg_weights` at the quantized files from step 5:
        ```bash
        python inference_openvino_xml.py \
@@ -91,7 +94,7 @@
        python inference_openvino_compile.py --save_result
        ```
 
-7. **Measure source and OpenVINO accuracy**
+### 7. Measure source and OpenVINO accuracy
 
   `accuracy.py` evaluates either model type alone or prints comparable results for both models. It is tested with local KITTI data and the Hugging Face `nateraw/kitti` dataset. Other datasets need an adapter that maps their images, boxes, class names, and (for ResNet) orientation/dimensions into the KITTI fields this evaluator expects. Changing only the dataset ID or column names is not enough unless the annotation schema is compatible.
 

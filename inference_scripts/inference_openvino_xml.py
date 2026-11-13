@@ -11,6 +11,7 @@ import glob
 
 import cv2
 import torch
+import yaml
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[1]  # YOLOv5 root directory
@@ -18,14 +19,12 @@ if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
-from models.common import DetectMultiBackend
 from utils.datasets import LoadImages
-from utils.general import LOGGER, check_img_size, check_requirements, non_max_suppression, print_args, scale_coords
-from utils.torch_utils import select_device, time_sync
+from utils.general import LOGGER, check_requirements, non_max_suppression, print_args, scale_coords
+from utils.torch_utils import time_sync
 
 import torch
 import torch.nn as nn
-from torchvision.models import resnet18, vgg11
 
 import numpy as np
 
@@ -33,23 +32,10 @@ from script.Dataset import generate_bins, DetectedObject
 from library.Math import *
 from library.Plotting import *
 from script import Model, ClassAverages
-from script.Model import ResNet, ResNet18, VGG11
 import openvino as ov
 
 core = ov.Core()
 
-
-# model factory to choose model
-model_factory = {
-    'resnet': resnet18(pretrained=True),
-    'resnet18': resnet18(pretrained=True),
-    # 'vgg11': vgg11(pretrained=True)
-}
-regressor_factory = {
-    'resnet': ResNet,
-    'resnet18': ResNet18,
-    'vgg11': VGG11
-}
 
 class Bbox:
     def __init__(self, box_2d, class_):
@@ -58,30 +44,34 @@ class Bbox:
 
 def detect3d(
     reg_weights,
-    model_select,
     source,
     calib_file,
     show_result,
     save_result,
     output_path,
     yolo_weights='../weights/openvino/yolov5s.xml',
-    yolo_data='../data/coco128.yaml'
+    yolo_data='../data/coco128.yaml',
+    det_device='CPU',
+    reg_device='CPU'
     ):
 
     # Directory
     imgs_path = sorted(glob.glob(str(source) + '/*'))
     calib = str(calib_file)
 
-    # load model
-    base_model = model_factory[model_select]
-    regressor = regressor_factory[model_select](model=base_model).to('cpu')
-
-    # load weight
-    # checkpoint = torch.load(reg_weights, map_location='cpu')
-    # regressor.load_state_dict(checkpoint['model_state_dict'])
-    # regressor.eval()
+    # Compile each model once. Static input shapes let the same IR compile on CPU, GPU, and NPU.
     regressor_model = core.read_model(reg_weights)
-    compiled_regressor = core.compile_model(regressor_model, "CPU")
+    regressor_model.reshape({regressor_model.input(0): [1, 3, 224, 224]})
+    compiled_regressor = core.compile_model(regressor_model, reg_device)
+
+    yolo_model = core.read_model(yolo_weights)
+    yolo_model.reshape({yolo_model.input(0): [1, 3, 640, 640]})
+    compiled_yolo = core.compile_model(yolo_model, det_device)
+    with open(yolo_data, errors='ignore') as f:
+        yolo_names = yaml.safe_load(f)['names']
+
+    LOGGER.info(f'YOLO detector on {compiled_yolo.get_property("EXECUTION_DEVICES")}, '
+                f'regressor on {compiled_regressor.get_property("EXECUTION_DEVICES")}')
 
     averages = ClassAverages.ClassAverages()
     angle_bins = generate_bins(2)
@@ -93,11 +83,10 @@ def detect3d(
         
         # Run detection 2d
         dets = detect2d(
-            weights=yolo_weights,
+            compiled_model=compiled_yolo,
+            names=yolo_names,
             source=img_path,
-            data=yolo_data,
             imgsz=[640, 640],
-            device='cpu',
             classes=[0, 2, 3, 5]
         )
 
@@ -144,12 +133,7 @@ def detect3d(
             cv2.waitKey(0)
         
         if save_result and output_path is not None:
-            if not os.path.exists(output_path):
-                try:
-                    os.mkdir(output_path)
-                except Exception as e:
-                    print(f"Error creating directory: {e}")
-                    pass
+            os.makedirs(output_path, exist_ok=True)
             # Save the image
             im_name = f'{output_path}/{i:03d}.png'
             cv2.imwrite(im_name, img)
@@ -157,11 +141,10 @@ def detect3d(
 
 @torch.no_grad()
 def detect2d(
-    weights,
+    compiled_model,
+    names,
     source,
-    data,
     imgsz,
-    device,
     classes
     ):
 
@@ -171,29 +154,13 @@ def detect2d(
     # Directories
     source = str(source)
 
-    # Load model
-    device = select_device(device)
-    model = DetectMultiBackend(weights, device=device, dnn=False, data=data)
-    stride, names, pt = model.stride, model.names, model.pt
-    imgsz = check_img_size(imgsz, s=stride)  # check image size
-
-    # Dataloader
-    dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt)
-
-    # Run inference
-    model.warmup(imgsz=(1, 3, *imgsz), half=False)  # warmup
-
-    model_new = core.read_model(weights)
-    print("OpenVINO IR model read successfully")
-
-    # # # Compile the model
-    compiled_model = core.compile_model(model_new, "CPU")
-    print("Model compiled successfully with OpenVINO")
+    # Dataloader: letterbox to the fixed model input size
+    dataset = LoadImages(source, img_size=imgsz, stride=32, auto=False)
 
     dt, seen = [0.0, 0.0, 0.0], 0
     for path, im, im0s, vid_cap, s in dataset:
         t1 = time_sync()
-        im = torch.from_numpy(im).to(device)
+        im = torch.from_numpy(im)
         im = im.float()
         im /= 255  # 0 - 255 to 0.0 - 1.0
         if len(im.shape) == 3:
@@ -279,18 +246,19 @@ def plot3d(
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='../weights/openvino/yolov5s.xml', help='model path(s)')
-    parser.add_argument('--source', type=str, default='../eval/image_2', help='file/dir/URL/glob, 0 for webcam')
-    parser.add_argument('--data', type=str, default='../data/coco128.yaml', help='(optional) dataset.yaml path')
+    parser.add_argument('--weights', nargs='+', type=str, default=str(ROOT / 'weights/openvino/yolov5s.xml'), help='model path(s)')
+    parser.add_argument('--source', type=str, default=str(ROOT / 'eval/image_2'), help='file/dir/URL/glob, 0 for webcam')
+    parser.add_argument('--data', type=str, default=str(ROOT / 'data/coco128.yaml'), help='(optional) dataset.yaml path')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
-    parser.add_argument('--device', default='cpu', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='CPU', help='OpenVINO device for both models, e.g. CPU, GPU, NPU')
+    parser.add_argument('--det_device', default=None, help='OpenVINO device for the YOLO detector (overrides --device)')
+    parser.add_argument('--reg_device', default=None, help='OpenVINO device for the regressor (overrides --device)')
     parser.add_argument('--classes', default=[0, 2, 3, 5], nargs='+', type=int, help='filter by class: --classes 0, or --classes 0 2 3')
-    parser.add_argument('--reg_weights', type=str, default='../weights/openvino/resnet18.xml', help='Regressor model weights')
-    parser.add_argument('--model_select', type=str, default='resnet', help='Regressor model list: resnet, vgg, eff')
-    parser.add_argument('--calib_file', type=str, default='../eval/camera_cal/calib_cam_to_cam.txt', help='Calibration file or path')
+    parser.add_argument('--reg_weights', type=str, default=str(ROOT / 'weights/openvino/resnet18.xml'), help='Regressor model weights')
+    parser.add_argument('--calib_file', type=str, default=str(ROOT / 'eval/camera_cal/calib_cam_to_cam.txt'), help='Calibration file or path')
     parser.add_argument('--show_result', action='store_true', help='Show Results with imshow')
     parser.add_argument('--save_result', action='store_true', help='Save result')
-    parser.add_argument('--output_path', type=str, default='../output', help='Save output pat')
+    parser.add_argument('--output_path', type=str, default=str(ROOT / 'output'), help='Save output pat')
 
     opt = parser.parse_args()
     opt.imgsz *= 2 if len(opt.imgsz) == 1 else 1  # expand
@@ -300,14 +268,15 @@ def parse_opt():
 def main(opt):
     detect3d(
         reg_weights=opt.reg_weights,
-        model_select=opt.model_select,
         source=opt.source,
         calib_file=opt.calib_file,
         show_result=opt.show_result,
         save_result=opt.save_result,
         output_path=opt.output_path,
         yolo_weights=opt.weights[0] if isinstance(opt.weights, list) else opt.weights,
-        yolo_data=opt.data
+        yolo_data=opt.data,
+        det_device=opt.det_device or opt.device,
+        reg_device=opt.reg_device or opt.device
     )
 
 if __name__ == "__main__":

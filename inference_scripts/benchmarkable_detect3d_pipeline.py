@@ -318,7 +318,7 @@ def benchmarkable_detect3d(
     elif yolo_model_type in ['onnx_openvino', 'ir_openvino']:
         input_name = yolo_model.input(0).any_name
         output_tensor_ov = yolo_model.output(0)
-        results = yolo_model.infer_new_request({input_name: yolo_input_feed})
+        results = yolo_model({input_name: yolo_input_feed})
         yolo_preds_raw = torch.from_numpy(results[output_tensor_ov]).to(device_pytorch if device_pytorch.type != 'cuda' else 'cpu')
     timings['yolo_inference'] = time.perf_counter() - time_start_yolo_infer
 
@@ -408,7 +408,7 @@ def benchmarkable_detect3d(
                     with torch.no_grad(): _, _, _ = regressor_model(reg_batch_feed)
                 elif regressor_model_type in ['onnx_openvino', 'ir_openvino']:
                     reg_input_name = regressor_model.input(0).any_name
-                    _ = regressor_model.infer_new_request({reg_input_name: reg_batch_feed})
+                    _ = regressor_model({reg_input_name: reg_batch_feed})
                     # Note: we only used actual_batch_size samples, the padding is discarded
                     
                 batch_inference_time = time.perf_counter() - _t_infer_start

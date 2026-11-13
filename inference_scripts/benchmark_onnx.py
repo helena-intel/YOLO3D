@@ -158,9 +158,9 @@ def main():
         for _ in range(args.warmup_runs):
             if args.dataset_path:
                 batch_data_np = get_real_batch_from_preloaded_np()
-                compiled_model.infer_new_request({final_input_layer.any_name: batch_data_np})
+                compiled_model({final_input_layer.any_name: batch_data_np})
             else:
-                compiled_model.infer_new_request({final_input_layer.any_name: dummy_input_batch_np})
+                compiled_model({final_input_layer.any_name: dummy_input_batch_np})
         print("Warm-up runs completed.")
     except Exception as e:
         print(f"Error during warm-up runs: {e}", file=sys.stderr)
@@ -174,9 +174,9 @@ def main():
             start_time = time.perf_counter()
             if args.dataset_path:
                 batch_data_np = get_real_batch_from_preloaded_np()
-                compiled_model.infer_new_request({final_input_layer.any_name: batch_data_np})
+                compiled_model({final_input_layer.any_name: batch_data_np})
             else:
-                compiled_model.infer_new_request({final_input_layer.any_name: dummy_input_batch_np})
+                compiled_model({final_input_layer.any_name: dummy_input_batch_np})
             end_time = time.perf_counter()
             timings.append(end_time - start_time)
             if (i + 1) % 10 == 0:

@@ -278,3 +278,9 @@ notebook.ipynb
 *.pkl
 *.ipynb
 
+
+# OpenVINO quickstart outputs ------------------------------------------------------------------------------------------
+ov-yolo3d-env/
+weights/openvino/
+model_cache/
+/output*/

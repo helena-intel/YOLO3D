@@ -15,6 +15,7 @@ import shutil
 import signal
 import time
 import urllib
+from importlib import metadata
 from itertools import repeat
 from multiprocessing.pool import ThreadPool
 from pathlib import Path
@@ -24,10 +25,11 @@ from zipfile import ZipFile
 import cv2
 import numpy as np
 import pandas as pd
-import pkg_resources as pkg
 import torch
 import torchvision
 import yaml
+from packaging.requirements import Requirement
+from packaging.version import parse as parse_version
 
 from utils.downloads import gsutil_getsize
 from utils.metrics import box_iou, fitness
@@ -252,7 +254,7 @@ def check_python(minimum='3.6.2'):
 
 def check_version(current='0.0.0', minimum='0.0.0', name='version ', pinned=False, hard=False, verbose=False):
     # Check version vs. required version
-    current, minimum = (pkg.parse_version(x) for x in (current, minimum))
+    current, minimum = (parse_version(x) for x in (current, minimum))
     result = (current == minimum) if pinned else (current >= minimum)  # bool
     s = f'{name}{minimum} required by YOLOv5, but {name}{current} is currently installed'  # string
     if hard:
@@ -271,15 +273,18 @@ def check_requirements(requirements=ROOT / 'requirements.txt', exclude=(), insta
         file = Path(requirements)
         assert file.exists(), f"{prefix} {file.resolve()} not found, check failed."
         with file.open() as f:
-            requirements = [f'{x.name}{x.specifier}' for x in pkg.parse_requirements(f) if x.name not in exclude]
+            lines = [line.split('#')[0].strip() for line in f]
+        parsed = [Requirement(line) for line in lines if line and not line.startswith('-')]
+        requirements = [f'{x.name}{x.specifier}' for x in parsed if x.name not in exclude]
     else:  # list or tuple of packages
         requirements = [x for x in requirements if x not in exclude]
 
     n = 0  # number of packages updates
     for r in requirements:
         try:
-            pkg.require(r)
-        except Exception as e:  # DistributionNotFound or VersionConflict if requirements not met
+            req = Requirement(r)
+            assert req.specifier.contains(metadata.version(req.name), prereleases=True)
+        except Exception as e:  # PackageNotFoundError or AssertionError if requirements not met
             s = f"{prefix} {r} not found and is required by YOLOv5"
             if install:
                 print(f"{s}, attempting auto-update...")
